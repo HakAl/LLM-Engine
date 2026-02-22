@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Engine Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header class="dashboard-header" role="banner">
+    <div class="header-left">
+      <h1 class="header-title">LLM Engine Dashboard</h1>
+    </div>
+    <div class="header-right">
+      <div class="connection-indicator" role="status" aria-live="polite" aria-label="Connection status">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span class="connection-text" id="connection-text">Connecting...</span>
+      </div>
+      <span class="last-updated" id="last-updated" aria-label="Last updated time">--</span>
+      <label class="auto-refresh-toggle" for="auto-refresh">
+        <input type="checkbox" id="auto-refresh" checked aria-label="Toggle automatic refresh">
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Auto-refresh</span>
+      </label>
+    </div>
+  </header>
+
+  <main id="main-content" class="dashboard-main">
+    <!-- Fleet Overview -->
+    <section class="fleet-overview" aria-label="Provider fleet overview">
+      <div class="section-header">
+        <h2 class="section-title">Fleet Overview</h2>
+        <div class="fleet-stats" role="status" aria-label="Aggregate statistics">
+          <span class="fleet-stat"><span class="fleet-stat-label">Requests</span> <span class="fleet-stat-value" id="stat-total-requests">0</span></span>
+          <span class="fleet-stat"><span class="fleet-stat-label">Success</span> <span class="fleet-stat-value" id="stat-success-rate">--</span></span>
+          <span class="fleet-stat"><span class="fleet-stat-label">Avg Latency</span> <span class="fleet-stat-value" id="stat-avg-latency">--</span></span>
+          <span class="fleet-stat"><span class="fleet-stat-label">Top Provider</span> <span class="fleet-stat-value" id="stat-top-provider">--</span></span>
+        </div>
+        <button class="fleet-collapse-btn" id="fleet-collapse" aria-label="Collapse fleet overview" aria-expanded="true">&#9662;</button>
+      </div>
+      <div class="fleet-cards-wrapper" id="fleet-cards-wrapper">
+        <div class="provider-cards" id="provider-cards" role="list" aria-label="Provider status cards">
+          <!-- Provider cards rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Test Console -->
+    <section class="test-console" aria-label="Test console">
+      <div class="section-header">
+        <h2 class="section-title">Test Console</h2>
+        <button id="console-new-chat" class="console-new-chat-btn" aria-label="Start new chat">New Chat</button>
+      </div>
+      <div class="console-controls">
+        <div class="console-select-group">
+          <label for="console-provider" class="console-label">Provider</label>
+          <select id="console-provider" class="console-select" aria-label="Select provider">
+            <option value="">All providers</option>
+          </select>
+        </div>
+        <div class="console-select-group">
+          <label for="console-model" class="console-label">Model</label>
+          <select id="console-model" class="console-select" aria-label="Select model to test">
+            <option value="">Select a model...</option>
+          </select>
+        </div>
+      </div>
+      <details class="console-system-prompt-details">
+        <summary class="console-system-prompt-summary">System Prompt</summary>
+        <label for="console-system-prompt" class="visually-hidden">System prompt</label>
+        <textarea
+          id="console-system-prompt"
+          class="console-system-prompt"
+          placeholder="Optional system prompt..."
+          rows="2"
+          aria-label="System prompt for chat"
+        ></textarea>
+      </details>
+      <div class="console-messages" id="console-messages" aria-live="polite" aria-label="Chat messages">
+        <div class="empty-state">Select a model and send a message to test routing</div>
+      </div>
+      <div class="console-input-row">
+        <label for="console-input" class="visually-hidden">Message</label>
+        <textarea
+          id="console-input"
+          class="console-input"
+          placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+          rows="2"
+          aria-label="Message to send"
+        ></textarea>
+        <button id="console-send" class="console-send-btn" aria-label="Send message">Send</button>
+      </div>
+    </section>
+
+    <!-- Activity Feed -->
+    <section class="activity-feed" aria-label="Recent routing activity">
+      <div class="section-header">
+        <h2 class="section-title">Activity Feed</h2>
+        <span class="entry-count" id="activity-count" aria-label="Number of visible entries">0 entries</span>
+      </div>
+      <div class="activity-list" id="activity-list" role="log" aria-live="polite" aria-label="Live routing decisions">
+        <!-- Activity entries rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Model Catalog -->
+    <section class="model-catalog" aria-label="Available models">
+      <div class="section-header">
+        <h2 class="section-title">Model Catalog</h2>
+        <div class="model-search-wrapper">
+          <label for="model-search" class="visually-hidden">Search models</label>
+          <input
+            type="search"
+            id="model-search"
+            class="model-search"
+            placeholder="Filter models..."
+            aria-label="Filter models by name, provider, or capability"
+            autocomplete="off"
+          >
+        </div>
+      </div>
+      <div class="model-table-wrapper">
+        <table class="model-table" aria-label="Model details">
+          <thead>
+            <tr>
+              <th scope="col">Model ID</th>
+              <th scope="col">Provider</th>
+              <th scope="col">Context Window</th>
+              <th scope="col">Capabilities</th>
+            </tr>
+          </thead>
+          <tbody id="model-table-body">
+            <!-- Model rows rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
