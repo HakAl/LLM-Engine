@@ -299,6 +299,220 @@ describe('Dashboard Server', () => {
     });
   });
 
+  // ── POST /v1/chat/completions (non-streaming) ───────────────────
+
+  describe('POST /v1/chat/completions (non-streaming)', () => {
+    it('returns 200 with OpenAI completion shape', async () => {
+      const { res, json } = await fetchJson(server, '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b',
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(json.object).toBe('chat.completion');
+      expect(json.id).toMatch(/^chatcmpl-/);
+      expect(json.choices).toHaveLength(1);
+      expect(json.choices[0].message.role).toBe('assistant');
+      expect(json.choices[0].message.content).toBe('Hello from mock!');
+      expect(json.choices[0].finish_reason).toBe('stop');
+      expect(json.model).toBe('llama-3.1-8b');
+    });
+
+    it('maps max_tokens to engine maxTokens', async () => {
+      await fetchJson(server, '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 50,
+        }),
+      });
+      const chatCall = (engine.chat as ReturnType<typeof vi.fn>).mock.lastCall;
+      expect(chatCall?.[0].maxTokens).toBe(50);
+    });
+
+    it('returns 400 with OpenAI error for malformed JSON', async () => {
+      const res = await fetch(url(server, '/v1/chat/completions'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{bad json',
+      });
+      const json = await res.json();
+      expect(res.status).toBe(400);
+      expect(json.error.type).toBe('invalid_request_error');
+      expect(json.error.code).toBe('invalid_json');
+    });
+
+    it('returns 400 for missing model', async () => {
+      const { res, json } = await fetchJson(server, '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+      });
+      expect(res.status).toBe(400);
+      expect(json.error.code).toBe('model_required');
+    });
+
+    it('returns 400 for invalid role', async () => {
+      const { res, json } = await fetchJson(server, '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'test',
+          messages: [{ role: 'tool', content: 'hi' }],
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(json.error.code).toBe('invalid_role');
+    });
+
+    it('returns OpenAI error envelope when engine throws', async () => {
+      const { AuthError } = await import('../../errors.js');
+      const failEngine = createMockEngine({
+        chat: vi.fn().mockRejectedValue(new AuthError('groq')),
+      });
+      const failServer = await startDashboardServer({ engine: failEngine, port: 0 });
+      try {
+        const { res, json } = await fetchJson(failServer, '/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b',
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        });
+        expect(res.status).toBe(401);
+        expect(json.error.type).toBe('authentication_error');
+      } finally {
+        failServer.close();
+      }
+    });
+  });
+
+  // ── POST /v1/chat/completions (streaming) ─────────────────────
+
+  describe('POST /v1/chat/completions (streaming)', () => {
+    it('returns SSE stream with OpenAI chunk shape', async () => {
+      const res = await fetch(url(server, '/v1/chat/completions'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b',
+          messages: [{ role: 'user', content: 'hi' }],
+          stream: true,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+      const body = await res.text();
+      const dataLines = body.split('\n').filter(l => l.startsWith('data: '));
+
+      // 2 chunks + [DONE]
+      expect(dataLines).toHaveLength(3);
+      expect(dataLines[dataLines.length - 1]).toBe('data: [DONE]');
+
+      // First chunk has role
+      const first = JSON.parse(dataLines[0].slice(6));
+      expect(first.object).toBe('chat.completion.chunk');
+      expect(first.id).toMatch(/^chatcmpl-/);
+      expect(first.choices[0].delta.role).toBe('assistant');
+      expect(first.choices[0].delta.content).toBe('Hello');
+
+      // Second chunk has finish_reason, no role
+      const second = JSON.parse(dataLines[1].slice(6));
+      expect(second.choices[0].delta.role).toBeUndefined();
+      expect(second.choices[0].delta.content).toBe(' world');
+      expect(second.choices[0].finish_reason).toBe('stop');
+
+      // Consistent id across chunks
+      expect(first.id).toBe(second.id);
+    });
+
+    it('sends OpenAI error envelope on stream failure', async () => {
+      const failEngine = createMockEngine({
+        chatStream: vi.fn().mockImplementation(async function* () {
+          yield { delta: 'partial', model: 'test', provider: 'test' } satisfies StreamChunk;
+          throw new Error('mid-stream failure');
+        }),
+      });
+      const failServer = await startDashboardServer({ engine: failEngine, port: 0 });
+      try {
+        const res = await fetch(url(failServer, '/v1/chat/completions'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'test',
+            messages: [{ role: 'user', content: 'hi' }],
+            stream: true,
+          }),
+        });
+
+        const body = await res.text();
+        const dataLines = body.split('\n').filter(l => l.startsWith('data: '));
+        const lastData = JSON.parse(dataLines[dataLines.length - 1].slice(6));
+        expect(lastData.error.type).toBe('server_error');
+        expect(lastData.error.message).toContain('mid-stream failure');
+      } finally {
+        failServer.close();
+      }
+    });
+  });
+
+  // ── GET /v1/models ────────────────────────────────────────────────
+
+  describe('GET /v1/models', () => {
+    it('returns OpenAI model list shape', async () => {
+      const { res, json } = await fetchJson(server, '/v1/models');
+      expect(res.status).toBe(200);
+      expect(json.object).toBe('list');
+      expect(Array.isArray(json.data)).toBe(true);
+      expect(json.data[0].id).toBe('llama-3.1-8b');
+      expect(json.data[0].object).toBe('model');
+      expect(json.data[0].owned_by).toBe('groq');
+    });
+  });
+
+  // ── CORS with Authorization ───────────────────────────────────────
+
+  describe('CORS with Authorization header', () => {
+    it('includes Authorization in allowed headers', async () => {
+      const res = await fetch(url(server, '/v1/chat/completions'), { method: 'OPTIONS' });
+      expect(res.headers.get('access-control-allow-headers')).toContain('Authorization');
+    });
+  });
+
+  // ── Body too large (413) ────────────────────────────────────────
+
+  describe('body too large', () => {
+    const oversizedBody = 'x'.repeat(1_048_577); // 1 byte over the 1MB limit
+
+    it('returns clean 413 on /api/chat (not a connection reset)', async () => {
+      const { res, json } = await fetchJson(server, '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: oversizedBody,
+      });
+      expect(res.status).toBe(413);
+      expect(json.error).toContain('too large');
+    });
+
+    it('returns clean 413 on /v1/chat/completions (not a connection reset)', async () => {
+      const { res, json } = await fetchJson(server, '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: oversizedBody,
+      });
+      expect(res.status).toBe(413);
+      expect(json.error).toBeDefined();
+    });
+  });
+
   // ── Port binding ─────────────────────────────────────────────────
 
   describe('port binding', () => {

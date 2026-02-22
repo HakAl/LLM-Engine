@@ -4,6 +4,14 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import type { Engine } from '../engine/engine.js';
+import {
+  parseAndValidate,
+  toInternalRequest,
+  toOpenAIResponse,
+  toOpenAIModelList,
+  toOpenAIError,
+  OpenAIStreamAdapter,
+} from './openai-adapter.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -45,7 +53,7 @@ export async function startDashboardServer(
     // CORS headers for local development
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -126,6 +134,68 @@ export async function startDashboardServer(
         return;
       }
 
+      // ── OpenAI-compatible routes ──────────────────────────────────
+
+      if (url.pathname === '/v1/models' && req.method === 'GET') {
+        const models = engine.getAvailableModels();
+        sendJson(res, 200, toOpenAIModelList(models));
+        return;
+      }
+
+      if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
+        const rawBody = await readBody(req);
+        const validation = parseAndValidate(rawBody);
+
+        if (!validation.ok) {
+          sendJson(res, validation.status, validation.body);
+          return;
+        }
+
+        const openaiReq = validation.request;
+        const internalReq = toInternalRequest(openaiReq);
+
+        // Abort wiring: cancel upstream generation on client disconnect
+        const ac = new AbortController();
+        req.on('close', () => ac.abort());
+
+        if (openaiReq.stream) {
+          // Streaming response
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          });
+
+          const adapter = new OpenAIStreamAdapter();
+
+          try {
+            for await (const chunk of engine.chatStream(internalReq, { signal: ac.signal })) {
+              const openaiChunk = adapter.adapt(chunk);
+              res.write(`data: ${JSON.stringify(openaiChunk)}\n\n`);
+            }
+            res.write('data: [DONE]\n\n');
+          } catch (streamError) {
+            if (!ac.signal.aborted) {
+              const { body } = toOpenAIError(streamError);
+              res.write(`data: ${JSON.stringify(body)}\n\n`);
+            }
+          }
+
+          res.end();
+          return;
+        }
+
+        // Non-streaming response
+        try {
+          const response = await engine.chat(internalReq, { signal: ac.signal });
+          sendJson(res, 200, toOpenAIResponse(response));
+        } catch (chatError) {
+          const { status, body } = toOpenAIError(chatError);
+          sendJson(res, status, body);
+        }
+        return;
+      }
+
       // Static file serving
       let filePath = url.pathname === '/' ? '/index.html' : url.pathname;
 
@@ -181,17 +251,25 @@ function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
+    let overLimit = false;
+
     req.on('data', (chunk: Buffer) => {
+      if (overLimit) return; // drain remaining data silently
       totalBytes += chunk.length;
       if (totalBytes > MAX_BODY_BYTES) {
-        req.destroy();
+        overLimit = true;
+        chunks.length = 0; // free buffered data
         reject(new BodyTooLargeError());
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
+    req.on('end', () => {
+      if (!overLimit) resolve(Buffer.concat(chunks).toString('utf-8'));
+    });
+    req.on('error', (err) => {
+      if (!overLimit) reject(err);
+    });
   });
 }
 
