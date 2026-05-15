@@ -682,6 +682,85 @@ body {
   border-top: 1px solid rgba(42, 45, 58, 0.4);
 }
 
+/* Rendered markdown (post-stream) inside an assistant message */
+.console-md {
+  white-space: normal;
+}
+.console-md > :first-child { margin-top: 0; }
+.console-md > :last-child { margin-bottom: 0; }
+.console-md p { margin: 0.4em 0; }
+.console-md h1, .console-md h2, .console-md h3, .console-md h4 {
+  color: var(--text-primary);
+  margin: 0.7em 0 0.3em;
+  font-weight: 600;
+}
+.console-md h1 { font-size: 1.1rem; }
+.console-md h2 { font-size: 1.0rem; }
+.console-md h3 { font-size: 0.92rem; }
+.console-md h4 { font-size: 0.88rem; }
+.console-md ul, .console-md ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+.console-md li { margin: 0.15em 0; }
+.console-md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+.console-md strong { color: var(--text-primary); font-weight: 600; }
+.console-md em { color: var(--text-primary); }
+.console-md a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.console-md blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+  color: var(--text-dim);
+  margin: 0.4em 0;
+}
+.console-md code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background: var(--bg-card);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--text-primary);
+}
+.console-md pre {
+  background: var(--bg-card);
+  padding: 8px 10px;
+  border-radius: var(--radius-badge);
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.console-md pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.78rem;
+  display: block;
+  white-space: pre;
+}
+.console-md table {
+  border-collapse: collapse;
+  margin: 0.4em 0;
+  font-size: 0.8rem;
+}
+.console-md th, .console-md td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.console-md th { background: var(--bg-card); }
+/* KaTeX display math: clamp width, allow horizontal scroll, tighten margins */
+.console-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+  margin: 0.4em 0 !important;
+}
+
 /* Reasoning trace ("<think>...</think>") rendered as a collapsed block */
 .think-block {
   margin: 4px 0;

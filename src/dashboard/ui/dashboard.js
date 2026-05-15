@@ -710,10 +710,10 @@
     while (i < fullText.length) {
       const openIdx = fullText.indexOf(OPEN, i);
       if (openIdx === -1) {
-        appendPlain(parent, fullText.slice(i));
+        appendPlain(parent, fullText.slice(i), done === true);
         return;
       }
-      if (openIdx > i) appendPlain(parent, fullText.slice(i, openIdx));
+      if (openIdx > i) appendPlain(parent, fullText.slice(i, openIdx), done === true);
       const after = openIdx + OPEN.length;
       const closeIdx = fullText.indexOf(CLOSE, after);
       if (closeIdx === -1) {
@@ -725,9 +725,75 @@
     }
   }
 
-  function appendPlain(parent, text) {
+  /**
+   * Append a non-think segment to the message. While streaming we keep it
+   * as plain text (fast, partial markdown/math don't render nicely). On
+   * the final pass (done=true) we render markdown + math: extract math
+   * expressions first (so marked doesn't break them across <br>/<p>),
+   * run marked, then re-inject KaTeX-rendered HTML at the placeholders.
+   */
+  function appendPlain(parent, text, done) {
     if (!text) return;
-    parent.appendChild(document.createTextNode(text));
+    if (done && window.marked && window.katex) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'console-md';
+      try {
+        wrapper.innerHTML = renderMarkdownWithMath(text);
+      } catch (_e) {
+        wrapper.textContent = text;
+      }
+      parent.appendChild(wrapper);
+    } else {
+      parent.appendChild(document.createTextNode(text));
+    }
+  }
+
+  // Private Use Area chars as math placeholders — won't appear in normal
+  // text, and marked passes them through unmolested as plain text.
+  const MATH_PH_START = '';
+  const MATH_PH_END = '';
+  const MATH_PH_RE = new RegExp(MATH_PH_START + '(\\d+)' + MATH_PH_END, 'g');
+
+  function renderMarkdownWithMath(text) {
+    const tokens = [];
+
+    // Extract math expressions first. Order matters: longer/more-specific
+    // delimiters before shorter ones so `$$...$$` doesn't get split by `$`.
+    const patterns = [
+      { re: /\$\$([\s\S]+?)\$\$/g, display: true },
+      { re: /\\\[([\s\S]+?)\\\]/g, display: true },
+      { re: /\\\(([\s\S]+?)\\\)/g, display: false },
+      { re: /\$([^\n$]+?)\$/g, display: false },
+    ];
+    let working = text;
+    for (const { re, display } of patterns) {
+      working = working.replace(re, (_, content) => {
+        const id = tokens.length;
+        tokens.push({ content: content.trim(), display });
+        return MATH_PH_START + id + MATH_PH_END;
+      });
+    }
+
+    let html = window.marked.parse(working, { breaks: true, gfm: true });
+
+    html = html.replace(MATH_PH_RE, (_, idx) => {
+      const tok = tokens[parseInt(idx, 10)];
+      if (!tok) return '';
+      try {
+        return window.katex.renderToString(tok.content, {
+          displayMode: tok.display,
+          throwOnError: false,
+        });
+      } catch (_e) {
+        return escapeForHtml(tok.content);
+      }
+    });
+
+    return html;
+  }
+
+  function escapeForHtml(s) {
+    return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   }
 
   function appendThink(parent, text, complete) {
