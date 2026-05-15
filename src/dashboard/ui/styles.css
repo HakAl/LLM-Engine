@@ -682,6 +682,124 @@ body {
   border-top: 1px solid rgba(42, 45, 58, 0.4);
 }
 
+/* Reasoning trace ("<think>...</think>") rendered as a collapsed block */
+.think-block {
+  margin: 4px 0;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.think-block > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+  list-style: none;
+}
+
+.think-block > summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform var(--transition-fast);
+}
+
+.think-block[open] > summary::before {
+  content: '▾ ';
+}
+
+.think-block.in-progress > summary {
+  color: var(--accent);
+  animation: think-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes think-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+.think-content {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* Max tokens input row in test console */
+.console-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.console-options-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.console-max-tokens {
+  width: 90px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.console-max-tokens:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Text-size toggle (S/M/L) in header */
+.size-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge);
+  overflow: hidden;
+}
+
+.size-toggle-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.size-toggle-btn:last-child {
+  border-right: none;
+}
+
+.size-toggle-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.size-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Apply zoom by data-size on <html>. Default (m) is 1.0 -- no override needed. */
+html[data-size="s"] { zoom: 0.85; }
+html[data-size="l"] { zoom: 1.18; }
+
 .console-input-row {
   display: flex;
   gap: 8px;

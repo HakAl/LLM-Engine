@@ -22,6 +22,11 @@
         <span class="connection-text" id="connection-text">Connecting...</span>
       </div>
       <span class="last-updated" id="last-updated" aria-label="Last updated time">--</span>
+      <div class="size-toggle" role="group" aria-label="Text size">
+        <button type="button" class="size-toggle-btn" data-size="s" aria-label="Small text">S</button>
+        <button type="button" class="size-toggle-btn" data-size="m" aria-label="Medium text">M</button>
+        <button type="button" class="size-toggle-btn" data-size="l" aria-label="Large text">L</button>
+      </div>
       <label class="auto-refresh-toggle" for="auto-refresh">
         <input type="checkbox" id="auto-refresh" checked aria-label="Toggle automatic refresh">
         <span class="toggle-slider"></span>
@@ -81,6 +86,19 @@
           aria-label="System prompt for chat"
         ></textarea>
       </details>
+      <div class="console-options">
+        <label for="console-max-tokens" class="console-options-label">Max tokens</label>
+        <input
+          type="number"
+          id="console-max-tokens"
+          class="console-max-tokens"
+          min="1"
+          max="32000"
+          step="1"
+          value="1024"
+          aria-label="Maximum tokens for response"
+        >
+      </div>
       <div class="console-messages" id="console-messages" aria-live="polite" aria-label="Chat messages">
         <div class="empty-state">Select a model and send a message to test routing</div>
       </div>

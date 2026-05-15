@@ -46,6 +46,9 @@
     dom.consoleSend = document.getElementById('console-send');
     dom.consoleNewChat = document.getElementById('console-new-chat');
     dom.consoleSystemPrompt = document.getElementById('console-system-prompt');
+    dom.consoleMaxTokens = document.getElementById('console-max-tokens');
+    // Size toggle buttons (S/M/L)
+    dom.sizeToggleButtons = document.querySelectorAll('.size-toggle-btn');
   }
 
   // --- Utility Functions ---
@@ -680,13 +683,64 @@
     const msg = document.createElement('div');
     msg.className = 'console-msg assistant';
 
-    const textNode = document.createTextNode('');
-    msg.appendChild(textNode);
+    const content = document.createElement('div');
+    content.className = 'console-msg-content';
+    msg.appendChild(content);
 
     dom.consoleMessages.appendChild(msg);
     dom.consoleMessages.scrollTop = dom.consoleMessages.scrollHeight;
 
-    return { element: msg, textNode: textNode };
+    return {
+      element: msg,
+      setContent(fullText, done) { renderAssistantContent(content, fullText, done === true); },
+    };
+  }
+
+  /**
+   * Render assistant text, splitting out any <think>...</think> reasoning
+   * blocks into a collapsed <details>. Handles partial open blocks during
+   * streaming: an unclosed block is rendered in-progress while the stream
+   * is live, and as complete once `done` is true.
+   */
+  function renderAssistantContent(parent, fullText, done) {
+    parent.innerHTML = '';
+    const OPEN = '<think>';
+    const CLOSE = '</think>';
+    let i = 0;
+    while (i < fullText.length) {
+      const openIdx = fullText.indexOf(OPEN, i);
+      if (openIdx === -1) {
+        appendPlain(parent, fullText.slice(i));
+        return;
+      }
+      if (openIdx > i) appendPlain(parent, fullText.slice(i, openIdx));
+      const after = openIdx + OPEN.length;
+      const closeIdx = fullText.indexOf(CLOSE, after);
+      if (closeIdx === -1) {
+        appendThink(parent, fullText.slice(after), done === true);
+        return;
+      }
+      appendThink(parent, fullText.slice(after, closeIdx), true);
+      i = closeIdx + CLOSE.length;
+    }
+  }
+
+  function appendPlain(parent, text) {
+    if (!text) return;
+    parent.appendChild(document.createTextNode(text));
+  }
+
+  function appendThink(parent, text, complete) {
+    const details = document.createElement('details');
+    details.className = complete ? 'think-block' : 'think-block in-progress';
+    const summary = document.createElement('summary');
+    summary.textContent = complete ? 'Thinking' : 'Thinking…';
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'think-content';
+    body.textContent = text.replace(/^\n+/, '').replace(/\n+$/, '');
+    details.appendChild(body);
+    parent.appendChild(details);
   }
 
   async function sendConsoleMessage() {
@@ -711,10 +765,17 @@
     consoleConversation.push({ role: 'user', content: text });
 
     try {
+      const requestBody = { model: model, messages: messages };
+      const maxTokensRaw = dom.consoleMaxTokens ? parseInt(dom.consoleMaxTokens.value, 10) : NaN;
+      if (Number.isFinite(maxTokensRaw) && maxTokensRaw > 0) {
+        // Engine uses camelCase; /api/chat/stream forwards body as-is.
+        requestBody.maxTokens = maxTokensRaw;
+      }
+
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model, messages: messages }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -723,7 +784,8 @@
       }
 
       // Stream tokens into the DOM
-      const { element: msgEl, textNode } = createStreamingMessage();
+      const streamingMsg = createStreamingMessage();
+      const msgEl = streamingMsg.element;
       let fullContent = '';
       let lastProvider = '';
       let lastFinishReason = '';
@@ -751,7 +813,7 @@
               throw new Error(parsed.error);
             }
             fullContent += parsed.delta || '';
-            textNode.textContent = fullContent;
+            streamingMsg.setContent(fullContent);
             if (parsed.provider) lastProvider = parsed.provider;
             if (parsed.finishReason) lastFinishReason = parsed.finishReason;
             dom.consoleMessages.scrollTop = dom.consoleMessages.scrollHeight;
@@ -762,6 +824,9 @@
           }
         }
       }
+
+      // Finalize: re-render so any unclosed <think> block stops pulsing
+      streamingMsg.setContent(fullContent, true);
 
       // Add meta line after stream completes
       if (lastProvider || lastFinishReason) {
@@ -820,6 +885,31 @@
     }
   }
 
+  // --- Text-size toggle (S/M/L) ---
+
+  const SIZE_KEY = 'dashboard-size';
+  const VALID_SIZES = new Set(['s', 'm', 'l']);
+
+  function applySize(size) {
+    if (!VALID_SIZES.has(size)) size = 'm';
+    document.documentElement.setAttribute('data-size', size);
+    try { localStorage.setItem(SIZE_KEY, size); } catch (_e) { /* private mode */ }
+    dom.sizeToggleButtons.forEach(btn => {
+      const active = btn.getAttribute('data-size') === size;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function initSizeToggle() {
+    let saved = 'm';
+    try { saved = localStorage.getItem(SIZE_KEY) || 'm'; } catch (_e) { /* private mode */ }
+    applySize(saved);
+    dom.sizeToggleButtons.forEach(btn => {
+      btn.addEventListener('click', () => applySize(btn.getAttribute('data-size')));
+    });
+  }
+
   // --- Last Updated Timer ---
 
   let lastUpdatedTimer = null;
@@ -845,6 +935,9 @@
     dom.consoleInput.addEventListener('keydown', onConsoleKeydown);
     dom.consoleNewChat.addEventListener('click', onNewChat);
     dom.fleetCollapse.addEventListener('click', onFleetCollapseToggle);
+
+    // Init size toggle from localStorage
+    initSizeToggle();
 
     // Start polling (auto-refresh is on by default)
     startPolling();
