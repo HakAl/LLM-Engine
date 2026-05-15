@@ -23,6 +23,7 @@ import { CerebrasProvider } from '../providers/cerebras.js';
 import { SambaNovaProvider } from '../providers/sambanova.js';
 import { GitHubModelsProvider } from '../providers/github.js';
 import { GeminiProvider } from '../providers/gemini.js';
+import { LocalMLXProvider } from '../providers/local-mlx.js';
 
 export interface Engine {
   chat(request: ChatRequest, options?: RequestOptions): Promise<ChatResponse>;
@@ -53,6 +54,7 @@ const PROVIDER_FACTORIES: Record<string, (cfg: ProviderFactoryConfig) => Provide
   sambanova: (cfg) => new SambaNovaProvider(cfg.apiKey, { baseUrl: cfg.baseUrl, cacheTtlMs: cfg.cacheTtlMs }),
   github: (cfg) => new GitHubModelsProvider(cfg.apiKey, { baseUrl: cfg.baseUrl, cacheTtlMs: cfg.cacheTtlMs }),
   gemini: (cfg) => new GeminiProvider(cfg.apiKey, { baseUrl: cfg.baseUrl, cacheTtlMs: cfg.cacheTtlMs }),
+  'local-mlx': (cfg) => new LocalMLXProvider(cfg.apiKey, { baseUrl: cfg.baseUrl, cacheTtlMs: cfg.cacheTtlMs }),
 };
 
 /**

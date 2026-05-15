@@ -5,14 +5,34 @@ import * as dotenv from '../../config/dotenv.js';
 
 describe('ConfigManager', () => {
   let mockEnv: Record<string, string>;
+  let savedProcessEnv: Record<string, string | undefined>;
+  const LOCAL_MLX_KEYS = [
+    'LOCAL_MLX_ENABLED',
+    'LOCAL_MLX_BASE_URL',
+    'LOCAL_MLX_API_KEY',
+  ] as const;
 
   beforeEach(() => {
     mockEnv = {};
     vi.spyOn(dotenv, 'parseDotEnv').mockImplementation(() => mockEnv);
+    // Isolate LOCAL_MLX_* from the developer's actual shell env
+    savedProcessEnv = {};
+    for (const key of LOCAL_MLX_KEYS) {
+      savedProcessEnv[key] = process.env[key];
+      delete process.env[key];
+    }
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const key of LOCAL_MLX_KEYS) {
+      const prev = savedProcessEnv[key];
+      if (prev === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = prev;
+      }
+    }
   });
 
   // ── load() with no env vars ────────────────────────────────────────
@@ -340,6 +360,71 @@ describe('ConfigManager', () => {
       expect(manager.getConfig().seedRpm).toBe(-5);
       expect(manager.version).toBe(1);
       expect(warnSpy).toHaveBeenCalled();
+    });
+  });
+
+  // ── local-mlx provider ─────────────────────────────────────────────
+
+  describe('local-mlx provider', () => {
+    it('is absent by default (opt-in only)', () => {
+      const manager = ConfigManager.load();
+      const config = manager.getConfig();
+      expect(config.providers['local-mlx']).toBeUndefined();
+    });
+
+    it('is not enabled when LOCAL_MLX_ENABLED is missing', () => {
+      mockEnv.LOCAL_MLX_BASE_URL = 'http://example:1234/v1';
+      const manager = ConfigManager.load();
+      expect(manager.getConfig().providers['local-mlx']).toBeUndefined();
+    });
+
+    it('is not enabled when LOCAL_MLX_ENABLED is "false"', () => {
+      mockEnv.LOCAL_MLX_ENABLED = 'false';
+      const manager = ConfigManager.load();
+      expect(manager.getConfig().providers['local-mlx']).toBeUndefined();
+    });
+
+    it('is enabled with defaults when LOCAL_MLX_ENABLED=true via .env', () => {
+      mockEnv.LOCAL_MLX_ENABLED = 'true';
+
+      const manager = ConfigManager.load();
+      const config = manager.getConfig();
+      const local = config.providers['local-mlx'];
+
+      expect(local).toBeDefined();
+      expect(local.enabled).toBe(true);
+      expect(local.priority).toBe(6);
+      expect(local.baseUrl).toBe('http://127.0.0.1:8080/v1');
+      expect(local.apiKey).toBe('none');
+    });
+
+    it('honours LOCAL_MLX_BASE_URL and LOCAL_MLX_API_KEY from .env', () => {
+      mockEnv.LOCAL_MLX_ENABLED = 'true';
+      mockEnv.LOCAL_MLX_BASE_URL = 'http://10.0.0.5:9000/v1';
+      mockEnv.LOCAL_MLX_API_KEY = 'local-token';
+
+      const manager = ConfigManager.load();
+      const local = manager.getConfig().providers['local-mlx'];
+
+      expect(local.baseUrl).toBe('http://10.0.0.5:9000/v1');
+      expect(local.apiKey).toBe('local-token');
+    });
+
+    it('reads LOCAL_MLX_ENABLED=true from process.env (CLI-style invocation)', () => {
+      process.env.LOCAL_MLX_ENABLED = 'true';
+      const manager = ConfigManager.load();
+      expect(manager.getConfig().providers['local-mlx']).toBeDefined();
+    });
+
+    it('prefers process.env over .env for LOCAL_MLX_BASE_URL', () => {
+      mockEnv.LOCAL_MLX_ENABLED = 'true';
+      mockEnv.LOCAL_MLX_BASE_URL = 'http://dotenv:8080/v1';
+      process.env.LOCAL_MLX_BASE_URL = 'http://processenv:9090/v1';
+
+      const manager = ConfigManager.load();
+      const local = manager.getConfig().providers['local-mlx'];
+
+      expect(local.baseUrl).toBe('http://processenv:9090/v1');
     });
   });
 

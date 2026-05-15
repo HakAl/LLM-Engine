@@ -67,7 +67,21 @@ export const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
       { type: 'rpd', total: 20, windowMs: 86_400_000 },
     ],
   },
+  'local-mlx': {
+    envVar: 'LOCAL_MLX_API_KEY',
+    baseUrl: 'http://127.0.0.1:8080/v1',
+    priority: 6,
+    rateLimits: [
+      { type: 'rpm', total: 100_000, windowMs: 60_000 },
+    ],
+  },
 };
+
+/** Default model id for local MLX server when LOCAL_MLX_MODEL is unset. */
+export const LOCAL_MLX_DEFAULT_MODEL = 'mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit';
+
+/** Placeholder API key used when LOCAL_MLX_API_KEY is unset. */
+export const LOCAL_MLX_DEFAULT_API_KEY = 'none';
 
 /**
  * Default engine configuration values.

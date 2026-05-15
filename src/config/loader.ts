@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { EngineConfig, ProviderConfig } from './types.js';
-import { PROVIDER_DEFAULTS, DEFAULT_ENGINE_CONFIG } from './defaults.js';
+import {
+  PROVIDER_DEFAULTS,
+  DEFAULT_ENGINE_CONFIG,
+  LOCAL_MLX_DEFAULT_API_KEY,
+} from './defaults.js';
 import { parseDotEnv } from './dotenv.js';
 
 // ── Zod schemas for validation ──────────────────────────────────────
@@ -140,6 +144,8 @@ export class ConfigManager {
     const providers: Record<string, ProviderConfig> = {};
 
     for (const [id, defaults] of Object.entries(PROVIDER_DEFAULTS)) {
+      if (id === 'local-mlx') continue; // handled separately below
+
       const apiKey = env[defaults.envVar];
       if (apiKey) {
         providers[id] = {
@@ -152,7 +158,54 @@ export class ConfigManager {
       }
     }
 
+    // local-mlx is opt-in via LOCAL_MLX_ENABLED. Unlike API-keyed providers,
+    // it is also configurable via process.env (no secrets involved) so the
+    // verification flow `LOCAL_MLX_ENABLED=true npm run dashboard` works.
+    const localMlxConfig = ConfigManager.buildLocalMlxProvider(env);
+    if (localMlxConfig) {
+      providers['local-mlx'] = localMlxConfig;
+    }
+
     return providers;
+  }
+
+  private static buildLocalMlxProvider(
+    env: Record<string, string>,
+  ): ProviderConfig | undefined {
+    const enabled = ConfigManager.readLocalMlxEnv(env, 'LOCAL_MLX_ENABLED');
+    if (enabled !== 'true') return undefined;
+
+    const defaults = PROVIDER_DEFAULTS['local-mlx'];
+    if (!defaults) return undefined;
+
+    const baseUrl =
+      ConfigManager.readLocalMlxEnv(env, 'LOCAL_MLX_BASE_URL') ?? defaults.baseUrl;
+    const apiKey =
+      ConfigManager.readLocalMlxEnv(env, 'LOCAL_MLX_API_KEY') ?? LOCAL_MLX_DEFAULT_API_KEY;
+
+    return {
+      apiKey,
+      baseUrl,
+      enabled: true,
+      priority: defaults.priority,
+      rateLimitOverrides: defaults.rateLimits,
+    };
+  }
+
+  /**
+   * Read a LOCAL_MLX_* setting from process.env first (so CLI-style
+   * `LOCAL_MLX_ENABLED=true npm run dashboard` works), then from .env.
+   * Returns undefined if neither source has a non-empty value.
+   */
+  private static readLocalMlxEnv(
+    env: Record<string, string>,
+    key: string,
+  ): string | undefined {
+    const fromProcess = process.env[key];
+    if (fromProcess && fromProcess.length > 0) return fromProcess;
+    const fromDotEnv = env[key];
+    if (fromDotEnv && fromDotEnv.length > 0) return fromDotEnv;
+    return undefined;
   }
 
   /**

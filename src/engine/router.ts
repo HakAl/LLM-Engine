@@ -259,10 +259,17 @@ export class Router {
       const circuitState = this.config.circuitBreaker.getState(id);
       const rateLimits = this.config.rateLimiter.getStatus(id);
 
+      // A provider in providerPriority but absent from the registry failed
+      // its initial fetchModels (e.g. connection refused). Surface this as
+      // 'unavailable' so the dashboard reflects offline local services.
+      const state = provider
+        ? deriveProviderState(circuitState, rateLimits)
+        : 'unavailable';
+
       return {
         id,
         name: provider?.name ?? id,
-        state: deriveProviderState(circuitState, rateLimits),
+        state,
         rateLimits,
         circuitState,
       };
