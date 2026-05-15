@@ -77,9 +77,6 @@ export const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   },
 };
 
-/** Default model id for local MLX server when LOCAL_MLX_MODEL is unset. */
-export const LOCAL_MLX_DEFAULT_MODEL = 'mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit';
-
 /** Placeholder API key used when LOCAL_MLX_API_KEY is unset. */
 export const LOCAL_MLX_DEFAULT_API_KEY = 'none';
 
