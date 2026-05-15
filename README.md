@@ -6,6 +6,7 @@ Currently integrated with:
 - Gemini
 - GitHub Models
 - Groq
+- Local MLX (opt-in, via `mlx_lm.server`)
 - Sambanova
 
 **NOTE: This dashboard is free, local software. LLM providers have their own terms. Treat anything you send out as public data.**
